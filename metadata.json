@@ -1,0 +1,6 @@
+{
+  "name": "CCL Logistics Dashboard",
+  "description": "Logistics management tool for load orders, crew performance, and detailed reporting with Excel integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
