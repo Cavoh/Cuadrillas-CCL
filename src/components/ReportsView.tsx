@@ -8,6 +8,29 @@ import { format, isWithinInterval, startOfDay, endOfDay, differenceInDays } from
 import { cn } from '../lib/utils';
 import { TrendingUp, Clock, Package, DollarSign, Truck } from 'lucide-react';
 
+// Escala semafórica para transportadoras ordenadas de mayor a menor retraso
+// Rojo (peor) → Naranja → Ámbar → Verde azulado (mejor)
+const SEMAPHORE_COLORS = [
+  '#dc2626', // rojo — mayor retraso
+  '#ea580c', // naranja oscuro
+  '#f97316', // naranja
+  '#fb923c', // naranja claro
+  '#f59e0b', // ámbar
+  '#eab308', // amarillo
+  '#84cc16', // verde lima
+  '#22c55e', // verde
+  '#10b981', // esmeralda
+  '#0d9488', // teal — menor retraso
+];
+
+// Interpolación: si hay más transportadoras que colores, se cicla hacia el centro
+const getCarrierColor = (index: number, total: number): string => {
+  if (total <= 1) return SEMAPHORE_COLORS[0];
+  const ratio = index / Math.max(total - 1, 1);
+  const colorIndex = Math.round(ratio * (SEMAPHORE_COLORS.length - 1));
+  return SEMAPHORE_COLORS[colorIndex];
+};
+
 interface ReportsViewProps {
   data: OrderData[];
   config: AppConfig;
@@ -148,19 +171,57 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
         {[
-          { label: 'Total Cargues', value: filteredData.filter(d => d.cuadrilla === 'SLA' || d.cuadrilla === 'CCL').length, icon: Truck, color: 'text-indigo-600' },
-          { label: 'Total Cajas', value: filteredData.reduce((acc, d) => acc + d.cajas, 0), icon: Package, color: 'text-blue-600' },
-          { label: 'TIEMPO PROM X CARGUE', value: `${Math.round(filteredData.reduce((acc, d) => acc + d.loadingTimeMinutes, 0) / (filteredData.length || 1))} min`, icon: Clock, color: 'text-purple-600' },
-          { label: 'Costo SLA', value: `$${costs.sla.toLocaleString()}`, icon: DollarSign, color: 'text-red-600' },
-          { label: 'Costo CCL', value: `$${costs.ccl.toLocaleString()}`, icon: DollarSign, color: 'text-green-600' },
+          {
+            label: 'Total Cargues',
+            value: filteredData.filter(d => d.cuadrilla === 'SLA' || d.cuadrilla === 'CCL').length.toLocaleString(),
+            icon: Truck,
+            textColor: 'text-blue-700 dark:text-blue-300',
+            bgColor: 'bg-blue-50 dark:bg-blue-950/40',
+            borderColor: 'border-blue-100 dark:border-blue-900/50',
+          },
+          {
+            label: 'Total Cajas',
+            value: filteredData.reduce((acc, d) => acc + d.cajas, 0).toLocaleString(),
+            icon: Package,
+            textColor: 'text-indigo-700 dark:text-indigo-300',
+            bgColor: 'bg-indigo-50 dark:bg-indigo-950/40',
+            borderColor: 'border-indigo-100 dark:border-indigo-900/50',
+          },
+          {
+            label: 'Tiempo Prom. x Cargue',
+            value: `${Math.round(filteredData.reduce((acc, d) => acc + d.loadingTimeMinutes, 0) / (filteredData.length || 1)).toLocaleString()} min`,
+            icon: Clock,
+            textColor: 'text-violet-700 dark:text-violet-300',
+            bgColor: 'bg-violet-50 dark:bg-violet-950/40',
+            borderColor: 'border-violet-100 dark:border-violet-900/50',
+          },
+          {
+            label: 'Costo SLA',
+            value: `$${costs.sla.toLocaleString()}`,
+            icon: DollarSign,
+            textColor: 'text-red-700 dark:text-red-300',
+            bgColor: 'bg-red-50 dark:bg-red-950/40',
+            borderColor: 'border-red-100 dark:border-red-900/50',
+          },
+          {
+            label: 'Costo CCL',
+            value: `$${costs.ccl.toLocaleString()}`,
+            icon: DollarSign,
+            textColor: 'text-emerald-700 dark:text-emerald-300',
+            bgColor: 'bg-emerald-50 dark:bg-emerald-950/40',
+            borderColor: 'border-emerald-100 dark:border-emerald-900/50',
+          },
         ].map((kpi, i) => (
-          <div key={i} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div key={i} className={cn(
+            "rounded-2xl border bg-white p-6 shadow-sm dark:bg-slate-900",
+            kpi.borderColor
+          )}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">{kpi.label}</p>
-                <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{kpi.label}</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p>
               </div>
-              <div className={cn("rounded-xl bg-slate-50 p-3 dark:bg-slate-800", kpi.color)}>
+              <div className={cn("rounded-xl p-3", kpi.bgColor, kpi.textColor)}>
                 <kpi.icon className="h-6 w-6" />
               </div>
             </div>
@@ -184,13 +245,13 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
                   outerRadius={80}
                   paddingAngle={5}
                   dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
+                  label={({ name, value }) => `${name}: ${value.toLocaleString()}`}
                 >
                   {pieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(value) => Number(value).toLocaleString()} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -202,14 +263,39 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
           <h3 className="mb-6 font-semibold text-slate-800 dark:text-white">Promedio de Cargue (Minutos)</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={crewAvgTimeData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="avg" radius={[4, 4, 0, 0]} label={{ position: 'insideTop', fill: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+              <BarChart data={crewAvgTimeData} margin={{ top: 16, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={config.theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                <XAxis dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12, fontWeight: 600 }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(value) => Number(value).toLocaleString()} tickLine={false} axisLine={false} />
+                <Tooltip
+                  formatter={(value) => Number(value).toLocaleString()}
+                  cursor={{ fill: config.theme === 'dark' ? 'rgba(148,163,184,0.08)' : 'rgba(0,0,0,0.04)' }}
+                  contentStyle={{
+                    borderRadius: '10px',
+                    border: 'none',
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+                    background: config.theme === 'dark' ? '#1e293b' : '#fff',
+                    color: config.theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                    fontSize: 12,
+                  }}
+                />
+                <Bar 
+                  dataKey="avg" 
+                  name="Minutos" 
+                  radius={[6, 6, 0, 0]} 
+                  maxBarSize={64} 
+                  label={(props: any) => {
+                    const { x, y, width, value } = props;
+                    return (
+                      <text x={x + width / 2} y={y + 15} fill="#fff" fontSize={12} fontWeight="bold" textAnchor="middle">
+                        {Number(value).toLocaleString()}
+                      </text>
+                    );
+                  }}
+                >
+                  {/* SLA = rojo operativo | CCL = azul corporativo */}
                   {crewAvgTimeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.name === 'SLA' ? '#ef4444' : '#3b82f6'} />
+                    <Cell key={`cell-${index}`} fill={entry.name === 'SLA' ? '#dc2626' : '#2563eb'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -218,51 +304,112 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
         </div>
 
         {/* Carrier Performance (Días de Retraso) */}
-        <div className="col-span-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
-          <h3 className="mb-6 font-semibold text-slate-800 dark:text-white">Desempeño por Transportadora (Días de Retraso)</h3>
-          <div className="h-96">
+        <div className="col-span-1 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+          <h3 className="mb-4 sm:mb-6 text-sm sm:text-base font-semibold text-slate-800 dark:text-white">Desempeño por Transportadora (Días de Retraso)</h3>
+          <div
+            style={{
+              height: isMobile
+                ? Math.max(280, carrierData.length * 52)
+                : 384,
+            }}
+          >
             {carrierData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart 
                   layout={isMobile ? 'vertical' : 'horizontal'}
                   data={carrierData} 
                   margin={{ 
-                    top: 20, 
-                    right: isMobile ? 40 : 30, 
-                    left: isMobile ? 80 : 20, 
-                    bottom: isMobile ? 20 : 20 
+                    top: isMobile ? 8 : 20, 
+                    right: isMobile ? 48 : 24, 
+                    left: isMobile ? 4 : 8, 
+                    bottom: isMobile ? 8 : 16,
                   }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={isMobile} horizontal={!isMobile} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={isMobile} horizontal={!isMobile} stroke={config.theme === 'dark' ? '#334155' : '#e2e8f0'} />
                   {isMobile ? (
                     <>
-                      <XAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} />
-                      <YAxis type="category" dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} width={75} />
+                      <XAxis
+                        type="number"
+                        tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10 }}
+                        tickFormatter={(value) => Number(value).toLocaleString()}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 500 }}
+                        width={90}
+                        tickLine={false}
+                        axisLine={false}
+                      />
                     </>
                   ) : (
                     <>
-                      <XAxis dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 11 }} height={40} />
-                      <YAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 11 }} />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 11, fontWeight: 500 }}
+                        height={44}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        type="number"
+                        tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 11 }}
+                        tickFormatter={(value) => Number(value).toLocaleString()}
+                        tickLine={false}
+                        axisLine={false}
+                      />
                     </>
                   )}
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip
+                    formatter={(value) => Number(value).toLocaleString()}
+                    cursor={{ fill: config.theme === 'dark' ? 'rgba(148,163,184,0.08)' : 'rgba(0,0,0,0.04)' }}
+                    contentStyle={{
+                      borderRadius: '10px',
+                      border: 'none',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+                      background: config.theme === 'dark' ? '#1e293b' : '#fff',
+                      color: config.theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: isMobile ? 11 : 12, paddingTop: 8 }}
+                  />
                   <Bar 
                     dataKey="retrasoTotal" 
                     name="Días de Retraso" 
-                    fill="#ef4444" 
-                    radius={isMobile ? [0, 4, 4, 0] : [4, 4, 0, 0]} 
-                    label={{ 
-                      position: isMobile ? 'right' : 'top', 
-                      fill: config.theme === 'dark' ? '#cbd5e1' : '#475569', 
-                      fontSize: 10, 
-                      fontWeight: 'bold' 
-                    }} 
-                  />
+                    radius={isMobile ? [0, 6, 6, 0] : [6, 6, 0, 0]}
+                    maxBarSize={isMobile ? 28 : 56}
+                    label={(props: any) => {
+                      const { x, y, width, height, value } = props;
+                      const offset = 8;
+                      const textX = isMobile ? x + width + offset : x + width / 2;
+                      const textY = isMobile ? y + height / 2 + 3 : y - offset;
+                      const textAnchor = isMobile ? 'start' : 'middle';
+                      return (
+                        <text
+                          x={textX}
+                          y={textY}
+                          fill={config.theme === 'dark' ? '#cbd5e1' : '#475569'}
+                          fontSize={10}
+                          fontWeight="bold"
+                          textAnchor={textAnchor}
+                        >
+                          {Number(value).toLocaleString()}
+                        </text>
+                      );
+                    }}
+                  >
+                    {carrierData.map((_, index) => (
+                      <Cell key={`carrier-cell-${index}`} fill={getCarrierColor(index, carrierData.length)} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-slate-400">
+              <div className="flex h-full items-center justify-center text-slate-400 text-sm">
                 No hay datos de transportadoras en este rango
               </div>
             )}
@@ -285,39 +432,70 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
                     bottom: 20 
                   }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={false} />
-                  <XAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} width={75} />
-                  <Tooltip />
-                  <Legend />
+                  <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={false} stroke={config.theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                  <XAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10 }} tickFormatter={(value) => Number(value).toLocaleString()} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 500 }} width={90} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    formatter={(value) => Number(value).toLocaleString()}
+                    cursor={{ fill: config.theme === 'dark' ? 'rgba(148,163,184,0.08)' : 'rgba(0,0,0,0.04)' }}
+                    contentStyle={{
+                      borderRadius: '10px',
+                      border: 'none',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+                      background: config.theme === 'dark' ? '#1e293b' : '#fff',
+                      color: config.theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                   <Bar 
                     dataKey="aTiempo" 
-                    name="Cargues a Tiempo" 
-                    fill="#3b82f6" 
-                    radius={[0, 4, 4, 0]} 
-                    label={{ 
-                      position: 'right', 
-                      fill: config.theme === 'dark' ? '#cbd5e1' : '#475569', 
-                      fontSize: 10, 
-                      fontWeight: 'bold' 
-                    }} 
+                    name="Cargues a Tiempo"
+                    fill="#16a34a"
+                    radius={[0, 6, 6, 0]}
+                    maxBarSize={26}
+                    label={(props: any) => {
+                      const { x, y, width, height, value } = props;
+                      return (
+                        <text
+                          x={x + width + 8}
+                          y={y + height / 2 + 3}
+                          fill={config.theme === 'dark' ? '#cbd5e1' : '#475569'}
+                          fontSize={10}
+                          fontWeight="bold"
+                          textAnchor="start"
+                        >
+                          {Number(value).toLocaleString()}
+                        </text>
+                      );
+                    }}
                   />
                   <Bar 
                     dataKey="retrasados" 
-                    name="Cargues Retrasados" 
-                    fill="#ef4444" 
-                    radius={[0, 4, 4, 0]} 
-                    label={{ 
-                      position: 'right', 
-                      fill: config.theme === 'dark' ? '#cbd5e1' : '#475569', 
-                      fontSize: 10, 
-                      fontWeight: 'bold' 
-                    }} 
+                    name="Cargues Retrasados"
+                    fill="#dc2626"
+                    radius={[0, 6, 6, 0]}
+                    maxBarSize={26}
+                    label={(props: any) => {
+                      const { x, y, width, height, value } = props;
+                      return (
+                        <text
+                          x={x + width + 8}
+                          y={y + height / 2 + 3}
+                          fill={config.theme === 'dark' ? '#cbd5e1' : '#475569'}
+                          fontSize={10}
+                          fontWeight="bold"
+                          textAnchor="start"
+                        >
+                          {Number(value).toLocaleString()}
+                        </text>
+                      );
+                    }}
                   />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-slate-400">
+              <div className="flex h-full items-center justify-center text-slate-400 text-sm">
                 No hay datos de transportadoras en este rango
               </div>
             )}
@@ -341,13 +519,13 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               <tr className="group">
                 <td className="py-4 font-semibold text-red-600">SLA (Pago x Caja)</td>
-                <td className="py-4 text-slate-600 dark:text-slate-400">{filteredData.filter(d => d.cuadrilla === 'SLA').reduce((acc, d) => acc + d.cajas, 0)} Cajas</td>
+                <td className="py-4 text-slate-600 dark:text-slate-400">{filteredData.filter(d => d.cuadrilla === 'SLA').reduce((acc, d) => acc + d.cajas, 0).toLocaleString()} Cajas</td>
                 <td className="py-4 text-slate-600 dark:text-slate-400">${config.slaBoxValue.toLocaleString()} / caja</td>
                 <td className="py-4 font-bold text-slate-900 dark:text-white">${costs.sla.toLocaleString()}</td>
               </tr>
               <tr className="group">
                 <td className="py-4 font-semibold text-blue-600">CCL (Pago Diario)</td>
-                <td className="py-4 text-slate-600 dark:text-slate-400">{costs.cclDaysCount} Días</td>
+                <td className="py-4 text-slate-600 dark:text-slate-400">{costs.cclDaysCount.toLocaleString()} Días</td>
                 <td className="py-4 text-slate-600 dark:text-slate-400">${config.cclDailyValue.toLocaleString()} / día</td>
                 <td className="py-4 font-bold text-slate-900 dark:text-white">${costs.ccl.toLocaleString()}</td>
               </tr>
