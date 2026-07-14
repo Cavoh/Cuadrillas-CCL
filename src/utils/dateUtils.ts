@@ -1,4 +1,4 @@
-import { parse, differenceInMinutes, differenceInDays, isValid } from 'date-fns';
+import { parse, differenceInMinutes, differenceInDays, isValid, startOfDay } from 'date-fns';
 
 export function parseExcelDate(dateStr: string | number | null | undefined): Date | null {
   if (dateStr === null || dateStr === undefined || dateStr === '') return null;
@@ -29,7 +29,7 @@ export function calculateMinutes(start: Date, end: Date): number {
   return Math.max(0, differenceInMinutes(end, start));
 }
 
-export function calculateDelayDays(end: Date, scheduled: Date | null): number {
+export function calculateDelayDays(actualDate: Date, scheduled: Date | null): number {
   if (!scheduled) return 0;
-  return Math.max(0, differenceInDays(end, scheduled));
+  return Math.max(0, differenceInDays(startOfDay(actualDate), startOfDay(scheduled)));
 }

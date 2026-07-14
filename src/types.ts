@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type CrewType = 'CCL' | 'SLA';
+export type CrewType = 'CCL' | 'SLA' | 'LTSA';
 
 export interface OrderData {
   id: string;

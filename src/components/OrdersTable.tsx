@@ -45,6 +45,7 @@ export default function OrdersTable({ data }: OrdersTableProps) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/50">
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Orden</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha de Cargue</th>
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Cuadrilla</th>
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Transportadora</th>
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Cajas</th>
@@ -56,7 +57,7 @@ export default function OrdersTable({ data }: OrdersTableProps) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                     No hay datos cargados. Use la configuración para subir un archivo Excel.
                   </td>
                 </tr>
@@ -78,6 +79,9 @@ export default function OrdersTable({ data }: OrdersTableProps) {
                       "px-6 py-4 font-mono text-sm font-medium",
                       row.cuadrilla === 'SLA' ? "text-red-700 dark:text-red-400" : "text-slate-900 dark:text-white"
                     )}>{row.id}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {format(row.fechaInicio, 'dd/MM/yyyy')}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={cn(
                         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ring-inset",
@@ -96,8 +100,8 @@ export default function OrdersTable({ data }: OrdersTableProps) {
                       "px-6 py-4 text-sm font-bold",
                       row.cuadrilla === 'SLA' ? "text-red-700 dark:text-red-400" : "text-slate-900 dark:text-white"
                     )}>{row.cajas}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{format(row.fechaInicio, 'dd/MM/yyyy HH:mm')}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{format(row.fechaFin, 'dd/MM/yyyy HH:mm')}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{format(row.fechaInicio, 'HH:mm')}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{format(row.fechaFin, 'HH:mm')}</td>
                     <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-white">{row.loadingTimeMinutes}</td>
                   </motion.tr>
                 ))

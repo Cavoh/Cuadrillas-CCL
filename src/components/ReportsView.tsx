@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend 
 } from 'recharts';
-import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format, isWithinInterval, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { cn } from '../lib/utils';
 import { TrendingUp, Clock, Package, DollarSign } from 'lucide-react';
 
@@ -14,26 +14,34 @@ interface ReportsViewProps {
 }
 
 export default function ReportsView({ data, config }: ReportsViewProps) {
+  const today = format(new Date(), 'yyyy-MM-dd');
   const [dateRange, setDateRange] = React.useState<{start: string, end: string}>({
-    start: '',
-    end: '',
+    start: today,
+    end: today,
   });
 
-  // Sync date range when data is first loaded or changes
+  const [isMobile, setIsMobile] = React.useState(false);
+
   React.useEffect(() => {
-    if (data.length > 0 && (!dateRange.start || !dateRange.end)) {
-      const sorted = [...data].sort((a, b) => a.fechaInicio.getTime() - b.fechaInicio.getTime());
-      setDateRange({
-        start: format(sorted[0].fechaInicio, 'yyyy-MM-dd'),
-        end: format(sorted[sorted.length - 1].fechaFin, 'yyyy-MM-dd'),
-      });
-    }
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const dataRangeStr = React.useMemo(() => {
+    if (data.length === 0) return 'Sin datos';
+    const dates = data.map(d => new Date(d.fechaInicio).getTime());
+    const min = new Date(Math.min(...dates));
+    const max = new Date(Math.max(...dates));
+    return `${format(min, 'dd/MM/yyyy')} - ${format(max, 'dd/MM/yyyy')}`;
   }, [data]);
 
   const filteredData = React.useMemo(() => {
     if (!dateRange.start || !dateRange.end) return data;
     
-    // Create Date objects correctly without time zone shifts
     const [startYear, startMonth, startDay] = dateRange.start.split('-').map(Number);
     const [endYear, endMonth, endDay] = dateRange.end.split('-').map(Number);
     
@@ -41,7 +49,7 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
     const end = endOfDay(new Date(endYear, endMonth - 1, endDay));
     
     return data.filter(d => {
-      const date = d.fechaInicio;
+      const date = new Date(d.fechaInicio);
       return date >= start && date <= end;
     });
   }, [data, dateRange]);
@@ -64,20 +72,19 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
     ];
   }, [filteredData]);
 
-  // Data for Bar Chart: Times/Delays by carrier
   const carrierData = React.useMemo(() => {
-    const carriers: Record<string, { name: string, tiempo: number, retraso: number, count: number }> = {};
+    const carriers: Record<string, { name: string, aTiempo: number, retrasoTotal: number, retrasados: number }> = {};
     filteredData.forEach(d => {
-      if (!carriers[d.transportadora]) carriers[d.transportadora] = { name: d.transportadora, tiempo: 0, retraso: 0, count: 0 };
-      carriers[d.transportadora].tiempo += d.loadingTimeMinutes;
-      carriers[d.transportadora].retraso += d.delayDays;
-      carriers[d.transportadora].count += 1;
+      if (!carriers[d.transportadora]) carriers[d.transportadora] = { name: d.transportadora, aTiempo: 0, retrasoTotal: 0, retrasados: 0 };
+      
+      if (d.delayDays === 0) {
+        carriers[d.transportadora].aTiempo += 1;
+      } else {
+        carriers[d.transportadora].retrasados += 1;
+      }
+      carriers[d.transportadora].retrasoTotal += d.delayDays;
     });
-    return Object.values(carriers).map(c => ({
-      ...c,
-      tiempoPromedio: Math.round(c.tiempo / c.count),
-      retrasoTotal: c.retraso
-    }));
+    return Object.values(carriers).sort((a, b) => b.retrasoTotal - a.retrasoTotal);
   }, [filteredData]);
 
   // Average loading time by crew
@@ -96,33 +103,45 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
   // Summary costs
   const costs = React.useMemo(() => {
     const slaBoxes = filteredData.filter(d => d.cuadrilla === 'SLA').reduce((acc, d) => acc + d.cajas, 0);
-    const cclDays = new Set(filteredData.filter(d => d.cuadrilla === 'CCL').map(d => format(d.fechaInicio, 'yyyy-MM-dd'))).size;
+    
+    // CCL is based strictly on the selected date range
+    const [startYear, startMonth, startDay] = (dateRange.start || today).split('-').map(Number);
+    const [endYear, endMonth, endDay] = (dateRange.end || today).split('-').map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+    const cclDays = Math.max(0, differenceInDays(endDate, startDate) + 1);
     
     return {
       sla: slaBoxes * config.slaBoxValue,
       ccl: cclDays * config.cclDailyValue,
+      cclDaysCount: cclDays,
       total: (slaBoxes * config.slaBoxValue) + (cclDays * config.cclDailyValue)
     };
-  }, [filteredData, config]);
+  }, [filteredData, config, dateRange, today]);
 
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Informes Detallados</h1>
-        <div className="flex items-center gap-2 rounded-xl bg-white p-1 shadow-sm dark:bg-slate-900">
-          <input 
-            type="date" 
-            value={dateRange.start}
-            onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
-            className="rounded-lg bg-transparent px-3 py-1.5 text-sm outline-none dark:text-white"
-          />
-          <span className="text-slate-400">→</span>
-          <input 
-            type="date" 
-            value={dateRange.end}
-            onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
-            className="rounded-lg bg-transparent px-3 py-1.5 text-sm outline-none dark:text-white"
-          />
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2 rounded-xl bg-white p-1 shadow-sm dark:bg-slate-900">
+            <input 
+              type="date" 
+              value={dateRange.start}
+              onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
+              className="rounded-lg bg-transparent px-3 py-1.5 text-sm outline-none dark:text-white"
+            />
+            <span className="text-slate-400">→</span>
+            <input 
+              type="date" 
+              value={dateRange.end}
+              onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
+              className="rounded-lg bg-transparent px-3 py-1.5 text-sm outline-none dark:text-white"
+            />
+          </div>
+          <span className="text-xs text-slate-500 dark:text-slate-400 mr-2">
+            Datos cargados: {dataRangeStr}
+          </span>
         </div>
       </div>
 
@@ -130,7 +149,7 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Total Cajas', value: filteredData.reduce((acc, d) => acc + d.cajas, 0), icon: Package, color: 'text-blue-600' },
-          { label: 'Tiempo Promedio', value: `${Math.round(filteredData.reduce((acc, d) => acc + d.loadingTimeMinutes, 0) / (filteredData.length || 1))} min`, icon: Clock, color: 'text-purple-600' },
+          { label: 'TIEMPO PROM X CARGUE', value: `${Math.round(filteredData.reduce((acc, d) => acc + d.loadingTimeMinutes, 0) / (filteredData.length || 1))} min`, icon: Clock, color: 'text-purple-600' },
           { label: 'Costo SLA', value: `$${costs.sla.toLocaleString()}`, icon: DollarSign, color: 'text-red-600' },
           { label: 'Costo CCL', value: `$${costs.ccl.toLocaleString()}`, icon: DollarSign, color: 'text-green-600' },
         ].map((kpi, i) => (
@@ -164,6 +183,7 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
                   outerRadius={80}
                   paddingAngle={5}
                   dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
                 >
                   {pieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -186,7 +206,7 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="avg" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="avg" radius={[4, 4, 0, 0]} label={{ position: 'insideTop', fill: '#fff', fontSize: 12, fontWeight: 'bold' }}>
                   {crewAvgTimeData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.name === 'SLA' ? '#ef4444' : '#3b82f6'} />
                   ))}
@@ -196,21 +216,103 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
           </div>
         </div>
 
-        {/* Carrier Performance */}
+        {/* Carrier Performance (Días de Retraso) */}
         <div className="col-span-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
-          <h3 className="mb-6 font-semibold text-slate-800 dark:text-white">Tiempos y Retrasos por Transportadora</h3>
-          <div className="h-80">
+          <h3 className="mb-6 font-semibold text-slate-800 dark:text-white">Desempeño por Transportadora (Días de Retraso)</h3>
+          <div className="h-96">
             {carrierData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={carrierData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-                  <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#ef4444" />
+                <BarChart 
+                  layout={isMobile ? 'vertical' : 'horizontal'}
+                  data={carrierData} 
+                  margin={{ 
+                    top: 20, 
+                    right: isMobile ? 40 : 30, 
+                    left: isMobile ? 80 : 20, 
+                    bottom: isMobile ? 20 : 20 
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={isMobile} horizontal={!isMobile} />
+                  {isMobile ? (
+                    <>
+                      <XAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} />
+                      <YAxis type="category" dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} width={75} />
+                    </>
+                  ) : (
+                    <>
+                      <XAxis dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 11 }} height={40} />
+                      <YAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 11 }} />
+                    </>
+                  )}
                   <Tooltip />
                   <Legend />
-                  <Bar yAxisId="left" dataKey="tiempoPromedio" name="Tiempo Promedio (min)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="right" dataKey="retrasoTotal" name="Días Retraso Total" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar 
+                    dataKey="retrasoTotal" 
+                    name="Días de Retraso" 
+                    fill="#ef4444" 
+                    radius={isMobile ? [0, 4, 4, 0] : [4, 4, 0, 0]} 
+                    label={{ 
+                      position: isMobile ? 'right' : 'top', 
+                      fill: config.theme === 'dark' ? '#cbd5e1' : '#475569', 
+                      fontSize: 10, 
+                      fontWeight: 'bold' 
+                    }} 
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-slate-400">
+                No hay datos de transportadoras en este rango
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Carrier Loads Count (A Tiempo vs Retrasados) */}
+        <div className="col-span-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+          <h3 className="mb-6 font-semibold text-slate-800 dark:text-white">Cargues a Tiempo vs Retrasados por Transportadora</h3>
+          <div className="h-96">
+            {carrierData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  layout="vertical"
+                  data={carrierData} 
+                  margin={{ 
+                    top: 20, 
+                    right: 40, 
+                    left: 80, 
+                    bottom: 20 
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={false} />
+                  <XAxis type="number" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: config.theme === 'dark' ? '#94a3b8' : '#475569', fontSize: 10 }} width={75} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar 
+                    dataKey="aTiempo" 
+                    name="Cargues a Tiempo" 
+                    fill="#3b82f6" 
+                    radius={[0, 4, 4, 0]} 
+                    label={{ 
+                      position: 'right', 
+                      fill: config.theme === 'dark' ? '#cbd5e1' : '#475569', 
+                      fontSize: 10, 
+                      fontWeight: 'bold' 
+                    }} 
+                  />
+                  <Bar 
+                    dataKey="retrasados" 
+                    name="Cargues Retrasados" 
+                    fill="#ef4444" 
+                    radius={[0, 4, 4, 0]} 
+                    label={{ 
+                      position: 'right', 
+                      fill: config.theme === 'dark' ? '#cbd5e1' : '#475569', 
+                      fontSize: 10, 
+                      fontWeight: 'bold' 
+                    }} 
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -244,7 +346,7 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
               </tr>
               <tr className="group">
                 <td className="py-4 font-semibold text-blue-600">CCL (Pago Diario)</td>
-                <td className="py-4 text-slate-600 dark:text-slate-400">{new Set(filteredData.filter(d => d.cuadrilla === 'CCL').map(d => format(d.fechaInicio, 'yyyy-MM-dd'))).size} Días</td>
+                <td className="py-4 text-slate-600 dark:text-slate-400">{costs.cclDaysCount} Días</td>
                 <td className="py-4 text-slate-600 dark:text-slate-400">${config.cclDailyValue.toLocaleString()} / día</td>
                 <td className="py-4 font-bold text-slate-900 dark:text-white">${costs.ccl.toLocaleString()}</td>
               </tr>

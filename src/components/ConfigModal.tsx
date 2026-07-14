@@ -37,30 +37,131 @@ export default function ConfigModal({ isOpen, onClose, config, onConfigChange, o
         }
 
         const processedData: OrderData[] = rawData.map((row, index) => {
-          const findKey = (candidates: string[]) => 
-            Object.keys(row).find(k => {
-              const normalized = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-              return candidates.some(c => normalized.includes(c));
+          const rowKeys = Object.keys(row);
+          const normalize = (s: string) => 
+            s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+          const findKeyExact = (candidates: string[]) => 
+            rowKeys.find(k => {
+              const norm = normalize(k);
+              return candidates.some(c => norm === c);
             });
 
-          const startVal = row[findKey(['hora de inicio', 'fecha inicio', 'inicio', 'start']) || ''];
-          const endVal = row[findKey(['hora de finalizacion', 'fecha fin', 'fin', 'end']) || ''];
-          const scheduledVal = row[findKey(['programada', 'scheduled']) || ''];
+          const findKeyContains = (candidates: string[]) => 
+            rowKeys.find(k => {
+              const norm = normalize(k);
+              return candidates.some(c => norm.includes(c));
+            });
 
-          const start = startVal instanceof Date ? startVal : parseExcelDate(startVal);
-          const end = endVal instanceof Date ? endVal : parseExcelDate(endVal);
-          const scheduled = scheduledVal instanceof Date ? scheduledVal : parseExcelDate(scheduledVal);
+          // 1. Scheduled / Appointment date column (FECHA)
+          // Prioritize exact matches to avoid partial match with "fecha de cargue".
+          let scheduledKey = findKeyExact(['fecha', 'cita', 'fecha programada', 'programada', 'scheduled']);
+          if (!scheduledKey) {
+            scheduledKey = findKeyContains(['fecha programada', 'programada', 'scheduled', 'cita']);
+          }
+
+          // 2. Loading date column (FECHA DE CARGUE)
+          let cargueKey = findKeyExact(['fecha de cargue', 'fecha cargue', 'fecha_cargue', 'cargue', 'loading date']);
+          if (!cargueKey) {
+            cargueKey = findKeyContains(['fecha de cargue', 'fecha cargue', 'fecha_cargue', 'cargue']);
+          }
+          if (!cargueKey) {
+            cargueKey = findKeyExact(['fecha inicio', 'inicio', 'start', 'fecha_inicio']) || 
+                        findKeyContains(['fecha inicio', 'inicio', 'start']);
+          }
+
+          // 3. Start & End time/date columns
+          let startKey = findKeyExact(['hora de inicio', 'hora inicio', 'hora_inicio', 'start time']);
+          if (!startKey) {
+            startKey = rowKeys.find(k => {
+              const norm = normalize(k);
+              return norm.includes('inicio') && !norm.includes('fecha');
+            });
+          }
+          if (!startKey) {
+            startKey = findKeyContains(['inicio', 'start']);
+          }
+
+          let endKey = findKeyExact(['hora de finalizacion', 'hora fin', 'hora_fin', 'end time']);
+          if (!endKey) {
+            endKey = findKeyContains(['finalizacion', 'fin', 'end']);
+          }
+
+          const startVal = startKey ? row[startKey] : null;
+          const endVal = endKey ? row[endKey] : null;
+          const scheduledVal = scheduledKey ? row[scheduledKey] : null;
+          const cargueVal = cargueKey ? row[cargueKey] : null;
+
+          let loadingDate = cargueVal instanceof Date ? cargueVal : parseExcelDate(cargueVal);
+          let start = startVal instanceof Date ? startVal : parseExcelDate(startVal);
+          let end = endVal instanceof Date ? endVal : parseExcelDate(endVal);
+          let scheduled = scheduledVal instanceof Date ? scheduledVal : parseExcelDate(scheduledVal);
+
+          // If we have a valid loadingDate, try to extract it from start/end if they contain actual date
+          if (!loadingDate) {
+            if (start && start.getFullYear() > 1910) {
+              loadingDate = start;
+            } else if (end && end.getFullYear() > 1910) {
+              loadingDate = end;
+            }
+          }
+
+          // Fallback if loadingDate is still not found: scan all values to find any date that is not scheduled
+          if (!loadingDate) {
+            for (const key of rowKeys) {
+              if (key === scheduledKey) continue;
+              const val = row[key];
+              const d = val instanceof Date ? val : parseExcelDate(val);
+              if (d && d.getFullYear() > 1910) {
+                loadingDate = d;
+                break;
+              }
+            }
+          }
+
+          // If loadingDate is still null, look at any date
+          if (!loadingDate) {
+            for (const key of rowKeys) {
+              const val = row[key];
+              const d = val instanceof Date ? val : parseExcelDate(val);
+              if (d && d.getFullYear() > 1910) {
+                loadingDate = d;
+                break;
+              }
+            }
+          }
+
+          // Merge start and end times with loadingDate if they are just times (year < 1910)
+          if (loadingDate) {
+            if (start && start.getFullYear() < 1910) {
+              start = new Date(loadingDate.getFullYear(), loadingDate.getMonth(), loadingDate.getDate(), start.getHours(), start.getMinutes(), start.getSeconds());
+            }
+            if (end && end.getFullYear() < 1910) {
+              end = new Date(loadingDate.getFullYear(), loadingDate.getMonth(), loadingDate.getDate(), end.getHours(), end.getMinutes(), end.getSeconds());
+            }
+          }
+
+          // Fallbacks
+          if (start && start.getFullYear() < 1910 && loadingDate) start = loadingDate;
+          if (end && end.getFullYear() < 1910 && loadingDate) end = loadingDate;
           
+          if (!start && loadingDate) start = loadingDate;
+          if (!end && loadingDate) end = loadingDate;
+
+          const findKey = (candidates: string[]) => findKeyContains(candidates);
+          const crewString = String(row[findKey(['cuadrilla', 'tipo', 'crew']) || ''] || '').toUpperCase();
+          const cuadrillaType = crewString.includes('SLA') ? 'SLA' : (crewString.includes('LTSA') || crewString.includes('EXITO') || crewString.includes('ÉXITO')) ? 'LTSA' : 'CCL';
+
           return {
             id: String(row[findKey(['id', 'orden', 'codigo']) || ''] || index),
-            cuadrilla: (String(row[findKey(['cuadrilla', 'tipo', 'crew']) || ''] || '').toUpperCase().includes('SLA') ? 'SLA' : 'CCL') as any,
+            cuadrilla: cuadrillaType as any,
             cajas: Number(row[findKey(['cajas', 'cantidad', 'boxes']) || ''] || 0),
             transportadora: String(row[findKey(['transportadora', 'carrier', 'empresa', 'cliente']) || ''] || 'N/A'),
             fechaInicio: start || new Date(),
             fechaFin: end || new Date(),
             fechaProgramada: scheduled || undefined,
             loadingTimeMinutes: start && end ? calculateMinutes(start, end) : 0,
-            delayDays: end && scheduled ? calculateDelayDays(end, scheduled) : 0,
+            delayDays: loadingDate && scheduled ? calculateDelayDays(loadingDate, scheduled) : (end && scheduled ? calculateDelayDays(end, scheduled) : 0),
             valid: !!(start && end)
           };
         }).filter(item => (item as any).valid) as OrderData[];
