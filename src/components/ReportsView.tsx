@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { format, isWithinInterval, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { cn } from '../lib/utils';
-import { TrendingUp, Clock, Package, DollarSign } from 'lucide-react';
+import { TrendingUp, Clock, Package, DollarSign, Truck } from 'lucide-react';
 
 interface ReportsViewProps {
   data: OrderData[];
@@ -146,8 +146,9 @@ export default function ReportsView({ data, config }: ReportsViewProps) {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
         {[
+          { label: 'Total Cargues', value: filteredData.filter(d => d.cuadrilla === 'SLA' || d.cuadrilla === 'CCL').length, icon: Truck, color: 'text-indigo-600' },
           { label: 'Total Cajas', value: filteredData.reduce((acc, d) => acc + d.cajas, 0), icon: Package, color: 'text-blue-600' },
           { label: 'TIEMPO PROM X CARGUE', value: `${Math.round(filteredData.reduce((acc, d) => acc + d.loadingTimeMinutes, 0) / (filteredData.length || 1))} min`, icon: Clock, color: 'text-purple-600' },
           { label: 'Costo SLA', value: `$${costs.sla.toLocaleString()}`, icon: DollarSign, color: 'text-red-600' },

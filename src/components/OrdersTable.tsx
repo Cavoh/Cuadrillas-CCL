@@ -45,6 +45,7 @@ export default function OrdersTable({ data }: OrdersTableProps) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/50">
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Orden</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha Cita</th>
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha de Cargue</th>
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Cuadrilla</th>
                 <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Transportadora</th>
@@ -57,7 +58,7 @@ export default function OrdersTable({ data }: OrdersTableProps) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
                     No hay datos cargados. Use la configuración para subir un archivo Excel.
                   </td>
                 </tr>
@@ -79,6 +80,9 @@ export default function OrdersTable({ data }: OrdersTableProps) {
                       "px-6 py-4 font-mono text-sm font-medium",
                       row.cuadrilla === 'SLA' ? "text-red-700 dark:text-red-400" : "text-slate-900 dark:text-white"
                     )}>{row.id}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {row.fechaProgramada ? format(row.fechaProgramada, 'dd/MM/yyyy') : '—'}
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
                       {format(row.fechaInicio, 'dd/MM/yyyy')}
                     </td>
